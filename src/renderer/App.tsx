@@ -1,295 +1,161 @@
 import { MemoryRouter as Router, Routes, Route } from 'react-router-dom';
 import './App.css';
 import { useEffect, useState } from 'react';
-import _ from 'lodash';
+import _, { find, map, orderBy } from 'lodash';
+
+interface TAppModbusDevice {
+  name: string;
+  ipAddress:string;
+  port:number;
+  address:number;
+  value:number;
+}
 
 const Hello = () => {
-  const [ports, setPorts] = useState<string[]>([]);
-  const [port, setPort] = useState<string>('');
-  const [baudRate, setBaudRate] = useState<number>(9600);
-  const [start, setStart] = useState<number>(0);
-  const [readLen, setReadLen] = useState<number>(1);
-  const [id, setId] = useState<number>(1);
-  const [fileName, setFileName] = useState<string>('');
-  const [functionCode, setFunctionCode] = useState<number>(3);
-  const [devices, setDevices] = useState<IDevice[]>([]);
+  const [appModbusDevices, setAppModbusDevices] = useState<TAppModbusDevice[]>([])
+  const [appBacnetDevices, setAppBacnetDevices] = useState<any[]>([])
+
+  const updateBacnetDevices = (data: any) => {
+    setAppBacnetDevices(props => {
+      return props.map(device => {
+        if(device.sender.address === data.sender.address) {
+          return {...device, object_list: device.object_list.map((object: any) => {
+            if(JSON.stringify(object.object_identifier) === JSON.stringify(data.object)) {
+              console.log("updateData", data.updateData)
+              return {...object, ...data.updateData}
+            }
+            return object
+          })}
+        }
+        return device
+      })
+    })
+  }
   useEffect(() => {
     console.log('hello');
-    const getPortEvent = window.electron.ipcRenderer.on('getPorts', (data) => {
-      setPorts(data);
-      console.log('data', data);
+    const getModbusDevices = window.electron.ipcRenderer.on("modbusDevice", (modbusDevices) => {
+      console.log("modbusDevice",JSON.parse(modbusDevices))
+      const newAppModbusDevice:TAppModbusDevice[] = []
+      JSON.parse(modbusDevices).map((device:IModbusDeviceGroup) => {
+        return device.targets.map(target => {
+          newAppModbusDevice.push({
+            name: target.name,
+            ipAddress: device.ipAddress,
+            port: device.port,
+            address: device.start+target.index,
+            value: 0
+          })
+        })
+      })
+      setAppModbusDevices(newAppModbusDevice)
+    })
+    const updateDeviceEvent = window.electron.ipcRenderer.on('updateDevice', (data) => {
+      setAppModbusDevices(props => {
+        return props.map(device => {
+          if(device.ipAddress === data.ipAddress &&device.address === data.address && device.port === data.port ){
+            return {
+              ...device,
+              value:data.value
+            }
+          }else {
+            return device
+          }
+        })
+      });
+      // console.log('data', data);
     });
-    const getData = window.electron.ipcRenderer.on('data', (data) => {
-      console.log(data);
-    });
-    const updateDevice = window.electron.ipcRenderer.on(
-      'updateDevices',
-      updateDeviceFn
-    );
-    window.electron.ipcRenderer.sendMessage('getPorts', '');
+
+    const getBacnetDevices = window.electron.ipcRenderer.on("bacnetDevices", (data) => {
+      const newBacnetDevice = map(JSON.parse(data), device => {
+        return {
+          ...device,
+          object_list: orderBy(device.object_list, ["id"], ["asc"])
+        }
+      })
+      console.log("bacnetDevice", newBacnetDevice)
+      setAppBacnetDevices(newBacnetDevice)
+    })
+
+
+    const updateBacnet = window.electron.ipcRenderer.on("updateBacnet", (data) => {
+      updateBacnetDevices(data)
+    })
+
+    window.electron.ipcRenderer.sendMessage('getModbusDevice', '');
+    window.electron.ipcRenderer.sendMessage('readData', '');
+    window.electron.ipcRenderer.sendMessage('getBacnetDevices', '');
     return () => {
-      if (getPortEvent) getPortEvent();
-      if (getData) getData();
-      if (updateDevice) updateDevice();
+      if(getModbusDevices) getModbusDevices();
+      if(updateDeviceEvent) updateDeviceEvent()
+      if(getBacnetDevices) getBacnetDevices();
+      if(updateBacnet) updateBacnet();
     };
   }, []);
 
-  const updateDeviceFn = (newDevices: IDevice[]) => {
-    if (JSON.stringify(devices) !== JSON.stringify(newDevices)) {
-      setDevices(newDevices);
-    }
-  };
+  const subscibeBacnetObject = (sender: any, object: any) => {
+    window.electron.ipcRenderer.sendMessage("getUpdateBacnet", {sender, object})
+  }
 
-  useEffect(() => {
-    window.electron.ipcRenderer.sendMessage('updateRead', devices);
-  }, [devices]);
-
-  const addDevices = () => {
-    if (port === '' || fileName === '') return;
-    const deviceOption = { baudRate };
-    setDevices((prev) => {
-      const prevDeviceIndex = _.findIndex(prev, { id: port });
-      if (prevDeviceIndex >= 0) {
-        const oldDevice = prev[prevDeviceIndex];
-        if (
-          oldDevice.fileName !== fileName ||
-          oldDevice.deviceOption !== deviceOption
-        ) {
-          return prev.map((device, index) =>
-            prevDeviceIndex === index
-              ? { ...device, fileName, deviceOption }
-              : device
-          );
-        }
-        return prev;
-      } else {
-        return [...prev, { id: port, fileName, deviceOption, options: [] }];
-      }
-    });
-  };
-
-  const deleteDevice = (device: IDevice) => {
-    console.log(device);
-    setDevices((prev) => {
-      const prevDeviceIndex = _.findIndex(devices, { id: device.id });
-      console.log(prevDeviceIndex);
-      if (prevDeviceIndex >= 0) {
-        prev.splice(prevDeviceIndex, 1);
-        console.log(prev);
-      }
-      return prev.map((device, index) =>
-        prevDeviceIndex === index ? { ...device, options: [] } : device
-      );
-    });
-  };
-
-  const addOption = () => {
-    if (port === '' || fileName === '') return;
-    const deviceOption = { baudRate };
-    const options: IReadOption = {
-      port,
-      functionCode,
-      start,
-      readLen,
-      id,
-      isRun: false,
-    };
-    setDevices((prev) => {
-      const prevDeviceIndex = _.findIndex(prev, {
-        id: port,
-        fileName,
-        deviceOption,
-      });
-      if (prevDeviceIndex >= 0) {
-        const oldOptions = prev[prevDeviceIndex].options;
-        if (!_.find(oldOptions, { id, start, readLen, functionCode })) {
-          const newOptions = [...oldOptions, options];
-          return prev.map((device, index) =>
-            prevDeviceIndex === index
-              ? { ...device, options: newOptions }
-              : device
-          );
-        }
-        return prev;
-      } else {
-        return prev;
-      }
-    });
-  };
-
-  const deleteOption = (option: IReadOption) => {
-    setDevices((prev) => {
-      const prevDeviceIndex = _.findIndex(prev, { id: option.port });
-      if (prevDeviceIndex >= 0) {
-        const oldOptions = prev[prevDeviceIndex].options;
-        const optionIndex = _.findIndex(oldOptions, {
-          id: option.id,
-          start: option.start,
-          readLen: option.readLen,
-        });
-        if (optionIndex >= 0) {
-          const newOptions = oldOptions;
-          newOptions.splice(optionIndex, 1);
-          // newOptions[optionIndex] = {
-          //   ...newOptions[optionIndex],
-          //   isRun: !newOptions[optionIndex].isRun,
-          // };
-          return prev.map((device, index) =>
-            prevDeviceIndex === index
-              ? { ...device, options: newOptions }
-              : device
-          );
-        }
-        return prev;
-      } else {
-        return prev;
-      }
-    });
-  };
-
-  const read = (option: IReadOption) => {
-    setDevices((prev) => {
-      const prevDeviceIndex = _.findIndex(prev, { id: option.port });
-      if (prevDeviceIndex >= 0) {
-        const oldOptions = prev[prevDeviceIndex].options;
-        const optionIndex = _.findIndex(oldOptions, {
-          id: option.id,
-          start: option.start,
-          readLen: option.readLen,
-        });
-        if (optionIndex >= 0) {
-          const newOptions = oldOptions;
-          newOptions[optionIndex] = {
-            ...newOptions[optionIndex],
-            isRun: !newOptions[optionIndex].isRun,
-          };
-          return prev.map((device, index) =>
-            prevDeviceIndex === index
-              ? { ...device, options: newOptions }
-              : device
-          );
-        }
-        return prev;
-      } else {
-        return prev;
-      }
-    });
-  };
   return (
     <div className="page-container">
-      <section
-        style={{
-          alignSelf: 'center',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-        }}
-      >
-        <div>
-          <div>포트</div>
-          <select onChange={(e) => setPort(e.target.value)}>
-            <option value=""></option>
-            {ports.map((port) => (
-              <option value={port}>{port}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <div>BaudRate</div>
-          <select onChange={(e) => setBaudRate(parseInt(e.target.value))}>
-            <option value={9600}>9600</option>
-            <option value={14400}>14400</option>
-            <option value={19200}>19200</option>
-            <option value={38400}>38400</option>
-            <option value={57600}>57600</option>
-            <option value={115200}>115200</option>
-            <option value={128000}>128000</option>
-          </select>
-        </div>
-        <div>
-          <div>로그파일명</div>
-          <input
-            defaultValue={''}
-            onChange={(e) => setFileName(e.target.value)}
-          />
-        </div>
-        <div>
-          <button onClick={addDevices}>추가</button>
-        </div>
-      </section>
-      <section
-        style={{
-          alignSelf: 'center',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-        }}
-      >
-        <div>
-          <div>함수</div>
-          <select
-            defaultValue={functionCode}
-            onChange={(e) => setFunctionCode(parseInt(e.target.value))}
-          >
-            <option value={1}>Read Coil(FC1)</option>
-            <option value={2}>Read Input Coil(FC2)</option>
-            <option value={3}>Read Holiding Registers(FC3)</option>
-            <option value={4}>Read Input Registers(FC4)</option>
-          </select>
-        </div>
-        <div>
-          <div>id</div>
-          <input
-            type="number"
-            defaultValue={1}
-            onChange={(e) => setId(parseInt(e.target.value))}
-          />
-        </div>
-        <div>
-          <div>시작주소</div>
-          <input
-            type="number"
-            defaultValue={0}
-            onChange={(e) => setStart(parseInt(e.target.value))}
-          />
-        </div>
-        <div>
-          <div>길이</div>
-          <input
-            type="number"
-            defaultValue={1}
-            onChange={(e) => setReadLen(parseInt(e.target.value))}
-          />
-        </div>
-        <div>
-          <button onClick={addOption}>추가</button>
-        </div>
-      </section>
-      <section style={{ background: '#FFF', color: 'black' }}>
-        <div>포트/로그파일명/baudRate</div>
-        {devices.map((device) => (
-          <div style={{ color: 'black' }} key={device.id}>
-            <div
-              onDoubleClick={() => {
-                deleteDevice(device);
-              }}
-            >{`${device.id}/${device.fileName}/${device.deviceOption.baudRate}`}</div>
-            <div>함수코드/ID/시작주소/길이</div>
-            {device.options.map((option) => (
-              <div
-                key={`${option.functionCode}/${option.id}/${option.start}/${option.readLen}`}
-                onClick={() => {
-                  read(option);
-                }}
-                onDoubleClick={() => {
-                  deleteOption(option);
-                }}
-              >{`${option.functionCode}/${option.id}/${option.start}/${
-                option.readLen
-              }/${option.isRun ? '정지' : '읽기'}`}</div>
-            ))}
-          </div>
-        ))}
+      <section style={{ background: '#FFF', color: 'black', overflow:'scroll' }}>
+        <div>Bacnet</div>
+        <table style={{width:'100%', borderCollapse: "collapse"}}>
+          <tbody>
+            <tr style={{fontWeight:"bold"}}>
+              <td>DeviceId</td>
+              <td>DeviceAddress</td>
+              <td>DeviceName</td>
+              <td>DeviceVendor</td>
+              <td>ObjectId</td>
+              <td>ObjectName</td>
+              <td>ObjectDescription</td>
+              <td>ObjectType</td>
+              <td>ObjectValue</td>
+            </tr>
+            {appBacnetDevices.map(device => {
+              return <>
+                {device.object_list.map((object: any) => {
+                  return <tr key={object.id} onClick={() => {
+                    subscibeBacnetObject(device.sender, object.object_identifier)
+                    console.log(device.sender, object.object_identifier)
+                  }}>
+                    <td>{device.name}</td>
+                    <td>{device.sender.address}</td>
+                    <td>{device.object_name}</td>
+                    <td>{device.vendor_name}</td>
+                    <td>{object.id}</td>
+                    <td>{object.object_name}</td>
+                    <td>{object.description}</td>
+                    <td>{object.object_type}</td>
+                    <td>{object.present_value}</td>
+                  </tr>
+                })}
+              </>
+            })}
+          </tbody>
+        </table>
+        <div>Modbus</div>
+        <table style={{width:'100%', borderCollapse: "collapse"}}>
+          <tbody>
+            <tr style={{fontWeight:"bold"}}>
+              <td>IP</td>
+              <td>포트</td>
+              <td>시작주소</td>
+              <td>태그</td>
+              <td>값</td>
+            </tr>
+            {appModbusDevices.map(device => {
+              return <tr key={device.name}>
+              <td>{device.ipAddress}</td>
+              <td>{device.port}</td>
+              <td>{device.address}</td>
+              <td>{device.name}</td>
+              <td>{device.value}</td>
+              </tr>
+            })}
+          </tbody>
+        </table>
       </section>
     </div>
   );

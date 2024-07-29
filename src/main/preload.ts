@@ -1,14 +1,14 @@
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
-
 export type Channels =
   | 'ipc-example'
-  | 'getPorts'
   | 'readData'
-  | 'readStop'
-  | 'state'
-  | 'data'
-  | 'updateRead'
-  | 'updateDevices';
+  | 'getModbusDevice'
+  | 'modbusDevice'
+  | 'updateDevice'
+  | 'getBacnetDevices'
+  | 'getUpdateBacnet'
+  | 'updateBacnet'
+  | 'bacnetDevices';
 
 contextBridge.exposeInMainWorld('electron', {
   ipcRenderer: {
