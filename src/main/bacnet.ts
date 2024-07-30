@@ -68,7 +68,6 @@ bacnetClient.on("error", err => {
  * updateBacnet함수를 통해 renderer프로세스로 해당 값을 전송
  */
 bacnetClient.on("covNotifyUnconfirmed", data => {
-  // console.log("Received COV: " + JSON.stringify(data));
   const value = subscribeObjectParser(data.payload);
   updateBacnet(data.header.sender, data.payload.monitoredObjectId, value);
 });
@@ -85,15 +84,7 @@ const bacnetDevice: IBacnetDevice[] = [];
  */
 bacnetClient.on("iAm", device => {
   console.log("iam");
-  // console.log(device);
 
-  const deviceId = device.payload.deviceId;
-  // if (knownDevices.includes(deviceId)) {
-  //   sendBacnetData(bacnetDevice);
-  //   return;
-  // }
-
-  // knownDevices.push(deviceId);
   const deviceName = "BAC_" + device.payload.deviceId;
   const changeDevice = {
     id: deviceName,
@@ -113,15 +104,11 @@ bacnetClient.on("iAm", device => {
       properties: propertyList
     }
   ];
-  // console.log("readPropertyMultiple");
   bacnetClient.readPropertyMultiple(changeDevice.sender, requestArray, {}, (err, res) => {
     if (err) console.log("err", err);
-    // console.log(res);
     parseDeviceObject(changeDevice.sender, res, { type: 8, instance: changeDevice.deviceId }, true, bacnetClient, async (res: IBacnetDevice) => {
       if (res.object_list) {
-        // res.object_list.filter(object => object.object_identifier)
         const filterObject = res.object_list.filter(object => object.object_identifier);
-        // filter(res.object_list, object => object.object_identifier);
         res.object_list = map(filterObject, object => {
           const object_identifier: IBacnetIdentifier =
             typeof object.object_identifier === "string" ? JSON.parse(object.object_identifier) : object.object_identifier;
@@ -131,14 +118,11 @@ bacnetClient.on("iAm", device => {
           };
         });
       }
-      // console.log("bacnetDevice", bacnetDevice);
       const device: IBacnetDevice = { ...changeDevice, ...res };
       bacnetDevice.push(device);
       await addBacnetDeice(device);
       const bacnetDeivce2 = await getBacnetDevice();
-      // console.log("bacnetDeivce2", bacnetDeivce2);
       sendBacnetData(bacnetDeivce2);
-      // console.log(JSON.stringify(bacnetDevice));
     });
   });
 });

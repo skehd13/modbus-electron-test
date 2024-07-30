@@ -45,7 +45,7 @@ const searchModbusDevice = async (device: IModbusDeviceGroup) => {
     sqlite.all(
       "SELECT * FROM modbusDevice WHERE ipAddress = ? AND port = ? AND start = ? AND length = ? AND type = ?",
       [device.ipAddress, device.port, device.start, device.length, device.type],
-      (err, rows) => {
+      (_err, rows) => {
         if (rows.length > 0) {
           res(true);
         } else {
@@ -61,9 +61,9 @@ const searchModbusDevice = async (device: IModbusDeviceGroup) => {
  * @param device IModbusDeviceGroup
  */
 export const addModbusDevice = async (devices: IModbusDeviceGroup[]) => {
-  const maxId: number = await new Promise((resolve, reject) => {
+  const maxId: number = await new Promise(resolve => {
     const aiQuery = "SELECT MAX(id) AS max_id FROM modbusDevice";
-    sqlite.each(aiQuery, (err, row: { max_id: number }) => {
+    sqlite.each(aiQuery, (_err, row: { max_id: number }) => {
       resolve(row.max_id || 0);
     });
   });
@@ -102,7 +102,7 @@ export const addModbusDevice = async (devices: IModbusDeviceGroup[]) => {
  */
 const addModbusTarget = (targets: ITarget[], deviceName: string, number: number) => {
   Promise.all(
-    targets.map(async (target, index) => {
+    targets.map(async (_target, index) => {
       const targetName = deviceName + "_target_" + index;
       return await new Promise((resolve, reject) => {
         sqlite.run("INSERT INTO modbusTarget(name, position, device_id) VALUES(?,?,?)", [targetName, index, number], err => {
@@ -122,8 +122,8 @@ const addModbusTarget = (targets: ITarget[], deviceName: string, number: number)
  */
 export const getModbusDevice = async () => {
   console.log("getModbusDevice start");
-  const devices: IModbusDeviceGroup[] = await new Promise((resolve, reject) => {
-    sqlite.all("SELECT * FROM modbusDevice", (err: any, row: IModbusDeviceGroup[]) => {
+  const devices: IModbusDeviceGroup[] = await new Promise(resolve => {
+    sqlite.all("SELECT * FROM modbusDevice", (_err: any, row: IModbusDeviceGroup[]) => {
       resolve(row);
     });
   });
@@ -131,7 +131,7 @@ export const getModbusDevice = async () => {
   const result: IModbusDeviceGroup[] = await Promise.all(
     devices.map(async device => {
       const target: ITarget[] = await new Promise(res => {
-        sqlite.all("SELECT * FROM modbusTarget WHERE device_id = ?", [device.id], (err, rows: ITarget[]) => {
+        sqlite.all("SELECT * FROM modbusTarget WHERE device_id = ?", [device.id], (_err, rows: ITarget[]) => {
           res(rows);
         });
       });
@@ -186,7 +186,7 @@ export const addBacnetDeice = async (device: IBacnetDevice) => {
  */
 const searchBacnetDevice = async (deviceId: string) => {
   return await new Promise<boolean>(res => {
-    sqlite.all("SELECT * FROM bacnetDevice WHERE id = ?", [deviceId], (err: any, row: IBacnetDevice[]) => {
+    sqlite.all("SELECT * FROM bacnetDevice WHERE id = ?", [deviceId], (_err: any, row: IBacnetDevice[]) => {
       if (row.length > 0) {
         res(true);
       } else {
@@ -236,7 +236,7 @@ const addBacnetObject = async (device: IBacnetDevice) => {
  */
 const searchBacnetObject = async (objectId: string) => {
   return await new Promise<boolean>(res => {
-    sqlite.all("SELECT * FROM bacnetObject WHERE id = ?", [objectId], (err: any, row: IBacnetObject[]) => {
+    sqlite.all("SELECT * FROM bacnetObject WHERE id = ?", [objectId], (_err: any, row: IBacnetObject[]) => {
       if (row.length > 0) {
         res(true);
       } else {
@@ -252,11 +252,11 @@ const searchBacnetObject = async (objectId: string) => {
  */
 export const getBacnetDevice = async () => {
   const data: IBacnetDevice[] = await new Promise(res => {
-    sqlite.all("SELECT * FROM bacnetDevice", async (err, rows: IBacnetDevice[]) => {
+    sqlite.all("SELECT * FROM bacnetDevice", async (_err, rows: IBacnetDevice[]) => {
       const devices: any[] = [];
       for (const row of rows) {
         const object_list = await new Promise(res2 => {
-          sqlite.all("SELECT * FROM bacnetObject WHERE device_id = ?", [row.id], (err2, row2: IBacnetObject[]) => {
+          sqlite.all("SELECT * FROM bacnetObject WHERE device_id = ?", [row.id], (_err2, row2: IBacnetObject[]) => {
             const rowData = row2.map((row: any) =>
               row.object_identifier ? { ...row, object_identifier: JSON.parse(row.object_identifier.toString()) } : row
             );
