@@ -1,24 +1,27 @@
-/**
- * This script will discover all devices in the network and read out all
- * properties and deliver a JSON as device description
- *
- * If a deviceId is given as first parameter then only this device is discovered
- */
-
 import Bacnet, { enums } from "@vertics/ts-bacnet";
-import { filter, map } from "lodash";
+import { map } from "lodash";
 import { parseDeviceObject, getObjectType, devicePropSubSet, subscribeObjectParser } from "./bacnetFn";
 import { sendBacnetData, updateBacnet } from "./main";
+import { addBacnetDeice, getBacnetDevice } from "./sqlite";
 
 // create instance of Bacnet
 const bacnetClient = new Bacnet({ apduTimeout: 4000, interface: "192.168.0.115" });
 let subscribeCOVId = 0;
-const subscribeCOVObjects: any[] = [];
+const subscribeCOVObjects: { subscribeCOVId?: number; sender: IBacnetSender; object: IBacnetIdentifier }[] = [];
+/**
+ * 255.255.255.255 (broadcast)로 bacnet whois함수를 호출
+ */
 export const getDevices = () => {
   bacnetClient.whoIs("255.255.255.255");
 };
 
-export const subscribeCOV = (sender: any, object: any) => {
+/**
+ * BACnet Object의 Property가 변경될때 변경된 값을 subscribe하는 함수
+ * @param sender IBacnetSender
+ * @param object IBacnetIdentifier
+ * @returns void
+ */
+export const subscribeCOV = (sender: IBacnetSender, object: IBacnetIdentifier) => {
   const newObject = { sender, object };
   if (subscribeCOVObjects.includes(newObject)) {
     return;
@@ -31,25 +34,28 @@ export const subscribeCOV = (sender: any, object: any) => {
   });
 };
 
-const unsubscribeCOV = (sender: any, object: any, subscribeCOVId: number) => {
+/**
+ * subscribeCOV함수로 등록한 subscribe를 해제하는 함수
+ * @param sender IBacnetSender
+ * @param object IBacnetIdentifier
+ * @param subscribeCOVId number
+ */
+const unsubscribeCOV = (sender: IBacnetSender, object: IBacnetIdentifier, subscribeCOVId: number) => {
   bacnetClient.subscribeCov(sender, object, subscribeCOVId, false, false, 1, {}, err => {
     console.log("subscribeCOV" + err);
   });
 };
 
+/**
+ * subscribeCOV함수로 등록한 전체 subscribe를 해제하는 함수
+ */
 export const unsubscribeCOVAll = async () => {
   await Promise.all(
     subscribeCOVObjects.map(device => {
-      unsubscribeCOV(device.sender, device.object, device.subscribeCOVId);
+      unsubscribeCOV(device.sender, device.object, device.subscribeCOVId || 0);
     })
   );
 };
-
-// emitted for each new message
-bacnetClient.on("message", (msg, rinfo) => {
-  console.log(msg);
-  if (rinfo) console.log(rinfo);
-});
 
 // emitted on errors
 bacnetClient.on("error", err => {
@@ -57,8 +63,12 @@ bacnetClient.on("error", err => {
   bacnetClient.close();
 });
 
+/**
+ * subscribeCOV로 등록된 Object가 변경될떄 변경된 값을 받는 함수
+ * updateBacnet함수를 통해 renderer프로세스로 해당 값을 전송
+ */
 bacnetClient.on("covNotifyUnconfirmed", data => {
-  console.log("Received COV: " + JSON.stringify(data));
+  // console.log("Received COV: " + JSON.stringify(data));
   const value = subscribeObjectParser(data.payload);
   updateBacnet(data.header.sender, data.payload.monitoredObjectId, value);
 });
@@ -68,19 +78,22 @@ bacnetClient.on("listening", () => {
   console.log("connect bacnet: " + Date.now());
 });
 
-const bacnetDevice: any[] = [];
-const knownDevices: any[] = [];
+const bacnetDevice: IBacnetDevice[] = [];
 
+/**
+ * whoid함수를 호출했을때 각 디바이스에서 디바이스 정보를 받아오는 함수
+ */
 bacnetClient.on("iAm", device => {
-  console.log(device);
+  console.log("iam");
+  // console.log(device);
 
   const deviceId = device.payload.deviceId;
-  if (knownDevices.includes(deviceId)) {
-    sendBacnetData(bacnetDevice);
-    return;
-  }
+  // if (knownDevices.includes(deviceId)) {
+  //   sendBacnetData(bacnetDevice);
+  //   return;
+  // }
 
-  knownDevices.push(deviceId);
+  // knownDevices.push(deviceId);
   const deviceName = "BAC_" + device.payload.deviceId;
   const changeDevice = {
     id: deviceName,
@@ -89,7 +102,7 @@ bacnetClient.on("iAm", device => {
     deviceId: device.payload.deviceId
   };
 
-  const propertyList: any[] = [];
+  const propertyList: { id: enums.PropertyIdentifier }[] = [];
   devicePropSubSet.forEach(item => {
     propertyList.push({ id: item });
   });
@@ -100,22 +113,32 @@ bacnetClient.on("iAm", device => {
       properties: propertyList
     }
   ];
+  // console.log("readPropertyMultiple");
   bacnetClient.readPropertyMultiple(changeDevice.sender, requestArray, {}, (err, res) => {
     if (err) console.log("err", err);
-    console.log(res);
-    parseDeviceObject(changeDevice.sender, res, { type: 8, instance: changeDevice.deviceId }, true, bacnetClient, (res: any) => {
+    // console.log(res);
+    parseDeviceObject(changeDevice.sender, res, { type: 8, instance: changeDevice.deviceId }, true, bacnetClient, async (res: IBacnetDevice) => {
       if (res.object_list) {
-        res.object_list = map(
-          filter(res.object_list, object => object.object_identifier),
-          object => ({
+        // res.object_list.filter(object => object.object_identifier)
+        const filterObject = res.object_list.filter(object => object.object_identifier);
+        // filter(res.object_list, object => object.object_identifier);
+        res.object_list = map(filterObject, object => {
+          const object_identifier: IBacnetIdentifier =
+            typeof object.object_identifier === "string" ? JSON.parse(object.object_identifier) : object.object_identifier;
+          return {
             ...object,
-            id: `${deviceName}_${getObjectType(object.object_identifier.type)}_${object.object_identifier.instance}`
-          })
-        );
+            id: `${deviceName}_${getObjectType(object_identifier.type)}_${object_identifier.instance}`
+          };
+        });
       }
-      bacnetDevice.push({ ...changeDevice, ...res });
-      sendBacnetData(bacnetDevice);
-      console.log(JSON.stringify(bacnetDevice));
+      // console.log("bacnetDevice", bacnetDevice);
+      const device: IBacnetDevice = { ...changeDevice, ...res };
+      bacnetDevice.push(device);
+      await addBacnetDeice(device);
+      const bacnetDeivce2 = await getBacnetDevice();
+      // console.log("bacnetDeivce2", bacnetDeivce2);
+      sendBacnetData(bacnetDeivce2);
+      // console.log(JSON.stringify(bacnetDevice));
     });
   });
 });

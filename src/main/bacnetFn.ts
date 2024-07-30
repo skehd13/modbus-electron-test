@@ -305,7 +305,7 @@ const parseValue: (address: any, objId: any, parentType: any, value: any, suppor
             if (err) {
               console.log(err);
             }
-            console.log("resValue", JSON.stringify(resValue));
+            // console.log("resValue", JSON.stringify(resValue));
             //console.log(JSON.stringify(value.value) + ': ' + JSON.stringify(resValue));
             parseDeviceObject(address, resValue, value.value, true, bacnetClient, callback);
           });
@@ -465,7 +465,12 @@ export const parseDeviceObject: (address: any, obj: any, parent: any, supportsMu
   }
 };
 
-export const getObjectType = (type: number) => {
+/**
+ * 받아온 ObjectType을 텍스트로 변경하는 함수
+ * @param type enums.ObjectType
+ * @returns
+ */
+export const getObjectType = (type: enums.ObjectType) => {
   switch (type) {
     case enums.ObjectType.ANALOG_INPUT:
       return "AI";
@@ -487,10 +492,14 @@ export const getObjectType = (type: number) => {
       return "";
   }
 };
-
-export const subscribeObjectParser = (payload: any) => {
+/**
+ * subscribe로 받아온 Object를 파싱하는 함수
+ * @param payload
+ * @returns
+ */
+export const subscribeObjectParser = (payload: { values: { property: { id: number }; value: any }[] }) => {
   // const objType = payload.monitoredObjectId.type
-  const values: any = {};
+  const values: { [objTypeString: string]: number | string } = {};
   payload.values.map((value: any) => {
     const valueType = value.property.id;
     if (valueType === enums.PropertyIdentifier.OBJECT_TYPE) {
@@ -503,6 +512,6 @@ export const subscribeObjectParser = (payload: any) => {
       values[objTypeString] = objTypeValue;
     }
   });
-  console.log("values", values);
+  // console.log("values", values);
   return values;
 };

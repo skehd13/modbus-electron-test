@@ -17,7 +17,8 @@ import { resolveHtmlPath } from "./util";
 import { closeSocket, createModbus, readData } from "./modbus_tcp";
 import { generateDevice } from "./deviceValue";
 import { getDevices, subscribeCOV, unsubscribeCOVAll } from "./bacnet";
-
+import "./sqlite";
+import { addModbusDevice, getModbusDevice } from "./sqlite";
 export default class AppUpdater {
   constructor() {
     log.transports.file.level = "info";
@@ -34,11 +35,13 @@ ipcMain.on("ipc-example", async (event, arg) => {
   event.reply("ipc-example", msgTemplate("pong"));
 });
 
+// 모드버스 디바이스 renderer로 보내기
 ipcMain.on("getModbusDevice", async event => {
   event.reply("modbusDevice", JSON.stringify(modbusDevices));
   event.reply("getModbusDevice", JSON.stringify(modbusDevices));
 });
 
+// 모드버스 데이터 가져오기
 ipcMain.on("readData", async () => {
   console.log("readData");
   if (mainWindow) {
@@ -46,30 +49,86 @@ ipcMain.on("readData", async () => {
   }
 });
 
+// BACnet 디바이스 불러오기
 ipcMain.on("getBacnetDevices", () => {
+  console.log("getBacnetDevices");
   getDevices();
 });
 
+// BACnet Object를 subscribe 등록
 ipcMain.on("getUpdateBacnet", (_event, data) => {
   console.log(data);
   subscribeCOV(data.sender, data.object);
 });
 
-export const sendBacnetData = (bacnetDevices: any[]) => {
+// BACnet Device render로 전송
+export const sendBacnetData = (bacnetDevices: IBacnetDevice[]) => {
   if (mainWindow) {
     mainWindow.webContents.send("bacnetDevices", JSON.stringify(bacnetDevices));
   }
 };
 
-export const updateBacnet = (sender: any, object: any, updateData: any) => {
+// BACnet Object의 변경된 value를 renderer로 전송
+export const updateBacnet = (sender: IBacnetSender, object: IBacnetIdentifier, updateData: any) => {
   if (mainWindow) {
     mainWindow.webContents.send("updateBacnet", { sender, object, updateData });
   }
 };
 
-// ipcMain.on('updateRead', async (event, devices) => {
-//   updateRead(devices);
-// });
+// 모드버스 데이터 생성 및 sqlite 저장
+const createModbusData = async () => {
+  const newModbusDevices = generateDevice([
+    {
+      ipAddress: "192.168.0.47",
+      name: "remote1",
+      port: 502,
+      start: 0,
+      length: 10,
+      type: 3,
+      delay: 3000,
+      targetName: "port1"
+    },
+    {
+      ipAddress: "192.168.0.47",
+      name: "remote2",
+      port: 502,
+      start: 10,
+      length: 10,
+      type: 3,
+      delay: 3000,
+      targetName: "port2"
+    },
+    {
+      ipAddress: "192.168.0.115",
+      name: "local1",
+      port: 502,
+      start: 0,
+      length: 10,
+      type: 3,
+      delay: 1000,
+      targetName: "port1"
+    },
+    {
+      ipAddress: "192.168.0.115",
+      name: "local2",
+      port: 502,
+      start: 10,
+      length: 10,
+      type: 3,
+      delay: 1000,
+      targetName: "port2"
+    }
+  ]);
+  await addModbusDevice(newModbusDevices);
+  await getModbusDevice().then(data => {
+    modbusDevices = data;
+  });
+  await Promise.all(
+    modbusDevices.map(modbusDevice => {
+      createModbus(modbusDevice);
+    })
+  );
+};
 
 if (process.env.NODE_ENV === "production") {
   const sourceMapSupport = require("source-map-support");
@@ -144,56 +203,6 @@ const createWindow = async () => {
     shell.openExternal(edata.url);
     return { action: "deny" };
   });
-  modbusDevices = generateDevice([
-    {
-      ipAddress: "192.168.0.47",
-      name: "remote1",
-      port: 502,
-      start: 0,
-      length: 10,
-      type: 3,
-      delay: 3000,
-      targetName: "port1"
-    },
-    {
-      ipAddress: "192.168.0.47",
-      name: "remote2",
-      port: 502,
-      start: 10,
-      length: 10,
-      type: 3,
-      delay: 3000,
-      targetName: "port2"
-    },
-    {
-      ipAddress: "192.168.0.115",
-      name: "local1",
-      port: 502,
-      start: 0,
-      length: 10,
-      type: 3,
-      delay: 1000,
-      targetName: "port1"
-    },
-    {
-      ipAddress: "192.168.0.115",
-      name: "local2",
-      port: 502,
-      start: 10,
-      length: 10,
-      type: 3,
-      delay: 1000,
-      targetName: "port2"
-    }
-  ]);
-  mainWindow.webContents.send("modbusDevice", JSON.stringify(modbusDevices));
-  await Promise.all(
-    modbusDevices.map(modbusDevice => {
-      createModbus(modbusDevice);
-    })
-  );
-  // Remove this if your app does not use auto updates
-  // eslint-disable-next-line
   new AppUpdater();
 };
 
@@ -212,11 +221,13 @@ app.on("window-all-closed", () => {
 
 app
   .whenReady()
-  .then(() => {
+  .then(async () => {
+    // await addModbusDevice().then(res => {
+    //   console.log("addModbusDevice res", res);
+    await createModbusData();
+    // });
     createWindow();
     app.on("activate", () => {
-      // On macOS it's common to re-create a window in the app when the
-      // dock icon is clicked and there are no other windows open.
       if (mainWindow === null) createWindow();
     });
   })
