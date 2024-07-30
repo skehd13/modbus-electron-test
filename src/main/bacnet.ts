@@ -28,7 +28,6 @@ export const subscribeCOV = (sender: IBacnetSender, object: IBacnetIdentifier) =
   }
   subscribeCOVId = subscribeCOVId + 1;
   subscribeCOVObjects.push({ ...newObject, subscribeCOVId });
-  console.log(sender, object);
   bacnetClient.subscribeCov(sender, object, subscribeCOVId, false, false, 0, {}, err => {
     console.log("subscribeCOV" + err);
   });
@@ -83,8 +82,6 @@ const bacnetDevice: IBacnetDevice[] = [];
  * whoid함수를 호출했을때 각 디바이스에서 디바이스 정보를 받아오는 함수
  */
 bacnetClient.on("iAm", device => {
-  console.log("iam");
-
   const deviceName = "BAC_" + device.payload.deviceId;
   const changeDevice = {
     id: deviceName,

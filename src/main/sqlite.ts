@@ -40,7 +40,6 @@ sqlite.serialize(async () => {
  * @returns
  */
 const searchModbusDevice = async (device: IModbusDeviceGroup) => {
-  console.log("searchModbusDevice");
   return await new Promise<boolean>(res => {
     sqlite.all(
       "SELECT * FROM modbusDevice WHERE ipAddress = ? AND port = ? AND start = ? AND length = ? AND type = ?",
@@ -121,13 +120,11 @@ const addModbusTarget = (targets: ITarget[], deviceName: string, number: number)
  * @returns Promise<IModbusDeviceGroup[]>
  */
 export const getModbusDevice = async () => {
-  console.log("getModbusDevice start");
   const devices: IModbusDeviceGroup[] = await new Promise(resolve => {
     sqlite.all("SELECT * FROM modbusDevice", (_err: any, row: IModbusDeviceGroup[]) => {
       resolve(row);
     });
   });
-  console.log("getModbusDevice devices", devices);
   const result: IModbusDeviceGroup[] = await Promise.all(
     devices.map(async device => {
       const target: ITarget[] = await new Promise(res => {
@@ -140,7 +137,6 @@ export const getModbusDevice = async () => {
       return { ...device, targets };
     })
   );
-  console.log("getModbusDevice result", result);
   const res = orderBy(result, ["name"], ["asc"]);
   return res;
 };
@@ -205,7 +201,6 @@ const addBacnetObject = async (device: IBacnetDevice) => {
   if (device.object_list) {
     for (const object of device.object_list) {
       const search = await searchBacnetObject(object.id);
-      console.log("search", search, object.id);
       if (search) {
         return;
       } else {

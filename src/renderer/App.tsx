@@ -1,7 +1,7 @@
 import { MemoryRouter as Router, Routes, Route } from "react-router-dom";
 import "./App.css";
 import { useEffect, useState } from "react";
-import _, { find, map, orderBy } from "lodash";
+import _, { map, orderBy } from "lodash";
 
 interface TAppModbusDevice {
   name: string;

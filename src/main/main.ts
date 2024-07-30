@@ -31,7 +31,6 @@ let mainWindow: BrowserWindow | null = null;
 let modbusDevices: IModbusDeviceGroup[];
 ipcMain.on("ipc-example", async (event, arg) => {
   const msgTemplate = (pingPong: string) => `IPC test: ${pingPong}`;
-  console.log(msgTemplate(arg));
   event.reply("ipc-example", msgTemplate("pong"));
 });
 
@@ -43,7 +42,6 @@ ipcMain.on("getModbusDevice", async event => {
 
 // 모드버스 데이터 가져오기
 ipcMain.on("readData", async () => {
-  console.log("readData");
   if (mainWindow) {
     readData(modbusDevices, mainWindow.webContents);
   }
@@ -51,13 +49,11 @@ ipcMain.on("readData", async () => {
 
 // BACnet 디바이스 불러오기
 ipcMain.on("getBacnetDevices", () => {
-  console.log("getBacnetDevices");
   getDevices();
 });
 
 // BACnet Object를 subscribe 등록
 ipcMain.on("getUpdateBacnet", (_event, data) => {
-  console.log(data);
   subscribeCOV(data.sender, data.object);
 });
 

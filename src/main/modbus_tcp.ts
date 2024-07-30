@@ -10,7 +10,6 @@ let intervals: NodeJS.Timeout[] = [];
  * @returns IModbusDeviceGroup
  */
 export const createModbus = (device: IModbusDeviceGroup) => {
-  console.log("create MODBUS", device.name);
   const socket = new net.Socket();
   const options = {
     host: device.ipAddress,
@@ -24,7 +23,6 @@ export const createModbus = (device: IModbusDeviceGroup) => {
   });
   socket.connect(options);
   const client = new ModbusTCPClient(socket, 1, 60000);
-  console.log("createModbus", device.name);
   device.socket = socket;
   device.client = client;
   return device;
@@ -41,11 +39,9 @@ export const readData = async (devices: IModbusDeviceGroup[], webContents: Elect
   if (intervals.length > 0) {
     await clearAllInterval();
   }
-  console.log(devices.length);
   const newDevices = devices;
   return await Promise.all(
     newDevices.map(async device => {
-      console.log("readData", device.name);
       const client = device.client;
       const targets = device.targets;
       if (!client) {
@@ -79,7 +75,6 @@ export const readData = async (devices: IModbusDeviceGroup[], webContents: Elect
                         address: device.start + target.position,
                         value
                       });
-                      // console.log(group.name, target.name, value);
                     } else {
                       console.log(group.name, "unkown", value);
                     }
