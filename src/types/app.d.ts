@@ -61,7 +61,8 @@ interface IModbusDeviceGroup {
   start: number;
   length: number;
   delay: number;
-  type: TGroupType;
+  type: number;
+  targetName: string;
   targets: ITarget[];
 }
 
@@ -91,6 +92,7 @@ interface IBacnetObject {
   reliability: string;
   status_flags: any[];
   units: string;
+  enabled: boolean;
 }
 
 interface IBacnetSender {

@@ -48,66 +48,80 @@ export const readData = async (devices: IModbusDeviceGroup[], webContents: Elect
         console.log("client not found!!!!!");
       }
       if (client) {
-        await Promise.all(
-          targets.map(group => {
-            const interval = setInterval(() => {
-              const readFn = (type: number, start: number, length: number) => {
-                if (type === 0) {
-                  return client.readCoils(start, length);
-                } else if (type === 1) {
-                  return client.readDiscreteInputs(start, length);
-                } else if (type === 2) {
-                  return client.readInputRegisters(start, length);
-                } else {
-                  return client.readHoldingRegisters(start, length);
-                }
-              };
-              readFn(device.type, device.start, device.length)
-                .then(data => {
-                  const values = data.response.body.valuesAsArray;
-                  values.map((value: any, index) => {
-                    const target = find(device.targets, { position: index });
-                    if (target) {
-                      target.value = value;
-                      webContents.send("updateDevice", {
-                        ipAddress: device.ipAddress,
-                        port: device.port,
-                        address: device.start + target.position,
-                        value
-                      });
-                    } else {
-                      console.log(group.name, "unkown", value);
-                    }
-                    return value;
+        // await Promise.all(
+        //   targets.map(group => {
+        const interval = setInterval(() => {
+          const readFn = (type: number, start: number, length: number) => {
+            if (type === 0) {
+              return client.readCoils(start, length);
+            } else if (type === 1) {
+              return client.readDiscreteInputs(start, length);
+            } else if (type === 2) {
+              return client.readInputRegisters(start, length);
+            } else {
+              return client.readHoldingRegisters(start, length);
+            }
+          };
+          readFn(device.type, device.start, device.length)
+            .then(data => {
+              const values = data.response.body.valuesAsArray;
+              values.map((value: any, index) => {
+                const target = find(device.targets, { position: device.start + index });
+                if (target) {
+                  target.value = value;
+                  webContents.send("updateModbusValue", {
+                    ipAddress: device.ipAddress,
+                    port: device.port,
+                    address: target.position,
+                    value
                   });
-                })
-                .catch(err => console.log(err));
-            }, device.delay);
-            intervals.push(interval);
-            return group;
-          })
-        );
+                } else {
+                  console.log(device.name, "unkown", value);
+                }
+                return value;
+              });
+            })
+            .catch(err => console.log(err));
+        }, device.delay);
+        intervals.push(interval);
+        // return group;
+        // })
+        // );
       }
     })
   );
 };
 
 /**
+ * 받아온 주소에 value값을 넣어주는 함수
+ * @param device IModbusDeviceGroup
+ * @param address number
+ * @param value number
+ */
+export const writeModbusData = (device: IModbusDeviceGroup, address: number, value: number) => {
+  const client = device.client;
+  if (client) {
+    client.writeSingleRegister(address, value);
+  }
+};
+
+/**
  * 연결된 modbus 소켓을 제거하는 함수
  * @param devices IModbusDeviceGroup
  */
-export const closeSocket = (devices: IModbusDeviceGroup[]) => {
-  console.log("close socket");
-  devices.map(device => {
-    device.socket?.destroy();
-  });
+export const closeSocket = async (devices: IModbusDeviceGroup[]) => {
+  await Promise.all(
+    devices.map(device => {
+      device.socket?.destroy();
+    })
+  );
 };
 
 /**
  * 데이터를 갱신하는 intervals에 등록된 함수를 해제하는 함수
  */
 export const clearAllInterval = async () => {
-  Promise.all(
+  await Promise.all(
     intervals.map(interval => {
       clearInterval(interval);
     })

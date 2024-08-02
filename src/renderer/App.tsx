@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import _, { map, orderBy } from "lodash";
 
 interface TAppModbusDevice {
+  originDevice?: any;
+  originTarget?: any;
   name: string;
   ipAddress: string;
   port: number;
@@ -23,7 +25,6 @@ const Hello = () => {
             ...device,
             object_list: device.object_list.map((object: any) => {
               if (JSON.stringify(object.object_identifier) === JSON.stringify(data.object)) {
-                console.log("updateData", data.updateData);
                 return { ...object, ...data.updateData };
               }
               return object;
@@ -35,24 +36,25 @@ const Hello = () => {
     });
   };
   useEffect(() => {
-    console.log("hello");
     const getModbusDevices = window.electron.ipcRenderer.on("modbusDevice", modbusDevices => {
-      console.log("modbusDevice", JSON.parse(modbusDevices));
       const newAppModbusDevice: TAppModbusDevice[] = [];
       JSON.parse(modbusDevices).map((device: IModbusDeviceGroup) => {
         return device.targets.map(target => {
           newAppModbusDevice.push({
+            originDevice: device,
+            originTarget: target,
             name: target.name,
             ipAddress: device.ipAddress,
             port: device.port,
-            address: device.start + target.position,
+            address: target.position,
             value: 0
           });
         });
       });
       setAppModbusDevices(newAppModbusDevice);
+      window.electron.ipcRenderer.sendMessage("readData", "");
     });
-    const updateDeviceEvent = window.electron.ipcRenderer.on("updateDevice", data => {
+    const updateModbusValue = window.electron.ipcRenderer.on("updateModbusValue", data => {
       setAppModbusDevices(props => {
         return props.map(device => {
           if (device.ipAddress === data.ipAddress && device.address === data.address && device.port === data.port) {
@@ -65,7 +67,6 @@ const Hello = () => {
           }
         });
       });
-      // console.log('data', data);
     });
 
     const getBacnetDevices = window.electron.ipcRenderer.on("bacnetDevices", data => {
@@ -75,27 +76,39 @@ const Hello = () => {
           object_list: orderBy(device.object_list, ["id"], ["asc"])
         };
       });
-      console.log("bacnetDevice", newBacnetDevice);
       setAppBacnetDevices(newBacnetDevice);
     });
 
     const updateBacnet = window.electron.ipcRenderer.on("updateBacnet", data => {
       updateBacnetDevices(data);
     });
+    const menuClick = window.electron.ipcRenderer.on("context-menu-command", data => {
+      console.log(data);
+    });
 
     window.electron.ipcRenderer.sendMessage("getModbusDevice", "");
-    window.electron.ipcRenderer.sendMessage("readData", "");
     window.electron.ipcRenderer.sendMessage("getBacnetDevices", "");
     return () => {
       if (getModbusDevices) getModbusDevices();
-      if (updateDeviceEvent) updateDeviceEvent();
+      if (updateModbusValue) updateModbusValue();
       if (getBacnetDevices) getBacnetDevices();
       if (updateBacnet) updateBacnet();
+      // window.removeEventListener("contextmenu", contextMenuFn);
+      if (menuClick) menuClick();
     };
   }, []);
 
-  const subscibeBacnetObject = (sender: any, object: any) => {
-    window.electron.ipcRenderer.sendMessage("getUpdateBacnet", { sender, object });
+  const subscibeBacnetObject = (sender: IBacnetSender, object: IBacnetIdentifier, enabled: boolean) => {
+    window.electron.ipcRenderer.sendMessage("getUpdateBacnet", { sender, object, enabled });
+  };
+
+  const modbusDataUpdate = (device: TAppModbusDevice) => {
+    const value = Math.floor(Math.random() * 10000);
+    window.electron.ipcRenderer.sendMessage("writeModbusData", { ipAddress: device.ipAddress, address: device.address, value });
+  };
+
+  const onContextMenu = (type: string, device: any, target?: any) => {
+    window.electron.ipcRenderer.sendMessage("show-context-menu", { type, device, target });
   };
 
   return (
@@ -113,6 +126,7 @@ const Hello = () => {
               <td>ObjectName</td>
               <td>ObjectDescription</td>
               <td>ObjectType</td>
+              <td>enabled</td>
               <td>ObjectValue</td>
             </tr>
             {appBacnetDevices.map(device => {
@@ -122,9 +136,11 @@ const Hello = () => {
                     return (
                       <tr
                         key={object.id}
+                        onContextMenu={() => {
+                          onContextMenu("bacnet", device);
+                        }}
                         onClick={() => {
-                          subscibeBacnetObject(device.sender, object.object_identifier);
-                          console.log(device.sender, object.object_identifier);
+                          subscibeBacnetObject(device.sender, object.object_identifier, !object.enabled);
                         }}
                       >
                         <td>{device.name}</td>
@@ -135,6 +151,7 @@ const Hello = () => {
                         <td>{object.object_name}</td>
                         <td>{object.description}</td>
                         <td>{object.object_type}</td>
+                        <td>{object.enabled ? "1" : "0"}</td>
                         <td>{object.present_value}</td>
                       </tr>
                     );
@@ -156,7 +173,15 @@ const Hello = () => {
             </tr>
             {appModbusDevices.map(device => {
               return (
-                <tr key={device.name}>
+                <tr
+                  key={device.name}
+                  onContextMenu={() => {
+                    onContextMenu("modbus", device.originDevice, device.originTarget);
+                  }}
+                  onClick={() => {
+                    modbusDataUpdate(device);
+                  }}
+                >
                   <td>{device.ipAddress}</td>
                   <td>{device.port}</td>
                   <td>{device.address}</td>

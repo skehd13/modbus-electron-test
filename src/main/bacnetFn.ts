@@ -1,4 +1,5 @@
 import Bacnet, { enums } from "@vertics/ts-bacnet";
+import moment from "moment-timezone";
 import process from "process";
 
 const debug = false;
@@ -305,8 +306,6 @@ const parseValue: (address: any, objId: any, parentType: any, value: any, suppor
             if (err) {
               console.log(err);
             }
-            // console.log("resValue", JSON.stringify(resValue));
-            //console.log(JSON.stringify(value.value) + ': ' + JSON.stringify(resValue));
             parseDeviceObject(address, resValue, value.value, true, bacnetClient, callback);
           });
           return;
@@ -372,12 +371,10 @@ export const parseDeviceObject: (address: any, obj: any, parent: any, supportsMu
   }
 
   if (!obj) {
-    console.log("object not valid on parse device object");
     return;
   }
 
   if (!obj.values || !Array.isArray(obj.values)) {
-    console.log("No device or invalid response");
     callback({ ERROR: "No device or invalid response" });
     return;
   }
@@ -389,14 +386,12 @@ export const parseDeviceObject: (address: any, obj: any, parent: any, supportsMu
     // Normalize and remove single item arrays
     Object.keys(objDef).forEach(devId => {
       Object.keys(objDef[devId]).forEach(objId => {
-        // console.log("objDef[devId][objId].length", objDef[devId][objId].length, objDef[devId][objId]);
         if (objDef[devId][objId].length === 1) {
           objDef[devId][objId] = objDef[devId][objId][0];
         }
       });
     });
     // If (standard case) only one device was in do not create sub structures)
-    // console.log("obj.values.length", obj.values.length, obj.values);
     if (obj.values.length === 1) {
       objDef = objDef[obj.values[0].objectId.instance];
     }
@@ -408,19 +403,15 @@ export const parseDeviceObject: (address: any, obj: any, parent: any, supportsMu
 
   obj.values.forEach((devBaseObj: any) => {
     if (!devBaseObj.objectId) {
-      console.log("No device Id found in object data");
       return;
     }
     if (devBaseObj.objectId.type === undefined || devBaseObj.objectId.instance === undefined) {
-      console.log("No device type or instance found in object data");
       return;
     }
     if (!devBaseObj.values || !Array.isArray(devBaseObj.values)) {
-      console.log("No device values response");
       return;
     }
     const deviceId = devBaseObj.objectId.instance;
-    // console.log("deviceId", deviceId);
     objDef[deviceId] = {};
     devBaseObj.values.forEach((devObj: any) => {
       let objId = "";
@@ -432,26 +423,21 @@ export const parseDeviceObject: (address: any, obj: any, parent: any, supportsMu
       if (debug) {
         console.log("Handle Object property:", deviceId, objId, devObj.value);
       }
-      // console.log("objId", objId)
       devObj.value.forEach((val: any) => {
         if (JSON.stringify(val.value) === JSON.stringify(parent)) {
           // ignore parent object
-          // console.log("valeu return1", val);
           objDef[deviceId][objId] = objDef[deviceId][objId] || [];
           objDef[deviceId][objId].push(val.value);
           // objDef[deviceId][objId] = val.value;
           return;
         }
         cbCount++;
-        // console.log("valeu return2", val.value)
         parseValue(address, devObj.id, parent.type, val, supportsMultiple, bacnetClient, (parsedValue: any) => {
           if (debug) {
             console.log("RETURN parsedValue", deviceId, objId, devObj.value, parsedValue);
           }
-          // console.log("parsedValue", parsedValue)
           objDef[deviceId][objId] = objDef[deviceId][objId] || [];
           objDef[deviceId][objId].push(parsedValue);
-          // objDef[deviceId][objId] = parsedValue;
           if (!--cbCount) {
             finalize();
           }
@@ -459,7 +445,6 @@ export const parseDeviceObject: (address: any, obj: any, parent: any, supportsMu
       });
     });
   });
-  // console.log("objDef", objDef)
   if (cbCount === 0) {
     finalize();
   }
@@ -504,11 +489,24 @@ export const subscribeObjectParser = (payload: { values: { property: { id: numbe
     const valueType = value.property.id;
     if (valueType === enums.PropertyIdentifier.OBJECT_TYPE) {
       const objTypeString = enums.getEnumName(enums.PropertyIdentifier, valueType).split("(")[0].toLowerCase();
-      const objTypeValue = enums.getEnumName(enums.ObjectType, value.value[0].value);
+      const objTypeValue = enums.getEnumName(enums.ObjectType, value.value[0].value).split("(")[0];
       values[objTypeString] = objTypeValue;
     } else {
       const objTypeString = enums.getEnumName(enums.PropertyIdentifier, valueType).split("(")[0].toLowerCase();
-      const objTypeValue = value.value.length === 1 ? value.value[0].value : value.value.map((v: any) => v.value).join(",");
+      const objTypeValue =
+        value.value.length === 1
+          ? value.value[0].value
+          : value.value
+              .map((v: any) => {
+                if (v.type === enums.ApplicationTag.DATE) {
+                  return moment(v.value).format("YYYY-MM-DD");
+                } else if (v.type === enums.ApplicationTag.TIME) {
+                  return moment(v.value).format("HH:mm:ss");
+                } else {
+                  return v.value;
+                }
+              })
+              .join(",");
       values[objTypeString] = objTypeValue;
     }
   });

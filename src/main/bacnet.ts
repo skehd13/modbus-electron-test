@@ -1,5 +1,5 @@
 import Bacnet, { enums } from "@vertics/ts-bacnet";
-import { map } from "lodash";
+import { findIndex, map } from "lodash";
 import { parseDeviceObject, getObjectType, devicePropSubSet, subscribeObjectParser } from "./bacnetFn";
 import { sendBacnetData, updateBacnet } from "./main";
 import { addBacnetDeice, getBacnetDevice } from "./sqlite";
@@ -39,10 +39,29 @@ export const subscribeCOV = (sender: IBacnetSender, object: IBacnetIdentifier) =
  * @param object IBacnetIdentifier
  * @param subscribeCOVId number
  */
-const unsubscribeCOV = (sender: IBacnetSender, object: IBacnetIdentifier, subscribeCOVId: number) => {
-  bacnetClient.subscribeCov(sender, object, subscribeCOVId, false, false, 1, {}, err => {
-    console.log("subscribeCOV" + err);
-  });
+export const unsubscribeCOV = (sender: IBacnetSender, object: IBacnetIdentifier, subscribeCOVId?: number) => {
+  if (subscribeCOVId !== undefined) {
+    bacnetClient.subscribeCov(sender, object, subscribeCOVId, false, false, 1, {}, err => {
+      console.log("unsubscribeCOV" + err);
+    });
+  } else {
+    const findSubIndex = subscribeCOVObjects.findIndex(
+      subObject =>
+        subObject.sender.address === sender.address &&
+        subObject.sender.forwardedFrom === sender.forwardedFrom &&
+        subObject.object.instance === object.instance &&
+        subObject.object.type === object.type
+    );
+    if (findSubIndex >= 0) {
+      const findSub = subscribeCOVObjects[findSubIndex];
+      if (findSub && findSub.subscribeCOVId) {
+        bacnetClient.subscribeCov(sender, object, findSub.subscribeCOVId, false, false, 1, {}, err => {
+          console.log("unsubscribeCOV" + err);
+        });
+        subscribeCOVObjects.splice(findSubIndex, 1);
+      }
+    }
+  }
 };
 
 /**
@@ -54,6 +73,7 @@ export const unsubscribeCOVAll = async () => {
       unsubscribeCOV(device.sender, device.object, device.subscribeCOVId || 0);
     })
   );
+  subscribeCOVObjects.length = 0;
 };
 
 // emitted on errors
@@ -67,6 +87,9 @@ bacnetClient.on("error", err => {
  * updateBacnet함수를 통해 renderer프로세스로 해당 값을 전송
  */
 bacnetClient.on("covNotifyUnconfirmed", data => {
+  if (data.payload.monitoredObjectId.type === enums.ObjectType.DATETIME_VALUE) {
+    console.log(JSON.stringify(data.payload));
+  }
   const value = subscribeObjectParser(data.payload);
   updateBacnet(data.header.sender, data.payload.monitoredObjectId, value);
 });
