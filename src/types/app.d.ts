@@ -46,6 +46,7 @@ interface ITarget {
   id: number;
   name: string;
   position: number;
+  parsing?: string;
   value?: any;
 }
 

@@ -14,7 +14,7 @@ import { autoUpdater } from "electron-updater";
 import log from "electron-log";
 import MenuBuilder from "./menu";
 import { resolveHtmlPath } from "./util";
-import { closeSocket, createModbus, readData, writeModbusData } from "./modbus_tcp";
+import { closeSocket, createModbus, readData, setWebContents, writeModbusData } from "./modbus_tcp";
 import { generateDevice } from "./deviceValue";
 import { getDevices, subscribeCOV, unsubscribeCOVAll } from "./bacnet";
 import "./sqlite";
@@ -27,7 +27,8 @@ export default class AppUpdater {
   }
 }
 
-let mainWindow: BrowserWindow | null = null;
+let modbusWindow: BrowserWindow | null = null;
+let bacnetWindow: BrowserWindow | null = null;
 let modbusDevices: IModbusDeviceGroup[];
 ipcMain.on("ipc-example", async (event, arg) => {
   const msgTemplate = (pingPong: string) => `IPC test: ${pingPong}`;
@@ -37,6 +38,14 @@ ipcMain.on("ipc-example", async (event, arg) => {
 /**
  * ipcMain Start
  */
+ipcMain.on("openBrowser", (_, data) => {
+  if (data === "modbusWindow") {
+    createModbusWindow();
+  }
+  if (data === "bacnetWindow") {
+    createBacnetWindow();
+  }
+});
 // 마우스 우클릭 이벤트가 발생하면 동작하는 이벤트
 // 여기서는 메뉴를 열어서 클릭된 row에따라서 다른 메뉴를 보여주게 처리
 ipcMain.on("show-context-menu", (event, data) => {
@@ -74,16 +83,18 @@ ipcMain.on("show-context-menu", (event, data) => {
 
 // 모드버스 디바이스를 요청하는 이벤트
 ipcMain.on("getModbusDevice", async event => {
+  console.log("getModbusDevice", modbusDevices);
   event.reply("modbusDevice", JSON.stringify(modbusDevices));
   // event.reply("getModbusDevice", JSON.stringify(modbusDevices));
 });
 
 // 모드버스 데이터를 읽기를 시작하는 이벤트
-ipcMain.on("readData", async () => {
-  if (mainWindow) {
-    readData(modbusDevices, mainWindow.webContents);
-  }
-});
+// ipcMain.on("readData", async () => {
+//   if (modbusWindow) {
+//     // setWebContents(modbusDevices)
+//     readData(modbusDevices, modbusWindow.webContents);
+//   }
+// });
 
 // 모드버스 디바이스에 데이터입력하는 이벤트
 ipcMain.on("writeModbusData", (_event, data) => {
@@ -98,8 +109,8 @@ ipcMain.on("addModbusDevice", async (_event, data) => {
   const newModbusDevice = generateDevice(data);
   await addModbusDevice(newModbusDevice);
   await getModbus();
-  if (mainWindow) {
-    mainWindow.webContents.send("modbusDevice", JSON.stringify(modbusDevices));
+  if (modbusWindow) {
+    modbusWindow.webContents.send("modbusDevice", JSON.stringify(modbusDevices));
     BrowserWindow.fromWebContents(_event.sender)?.close();
     // readData(modbusDevices, mainWindow.webContents);
   }
@@ -112,8 +123,8 @@ ipcMain.on("deleteModbus", async (_event, data) => {
   existDevice?.socket?.destroy();
   await deleteModbusDevice(existDevice);
   await getModbus();
-  if (mainWindow) {
-    mainWindow.webContents.send("modbusDevice", JSON.stringify(modbusDevices));
+  if (modbusWindow) {
+    modbusWindow.webContents.send("modbusDevice", JSON.stringify(modbusDevices));
     BrowserWindow.fromWebContents(_event.sender)?.close();
   }
 });
@@ -123,8 +134,8 @@ ipcMain.on("updateModbusDevice", async (_event, data) => {
   const newModbusDevice = generateDevice(data);
   await updateModbusDevice({ ...newModbusDevice[0], id: data.id });
   await getModbus();
-  if (mainWindow) {
-    mainWindow.webContents.send("modbusDevice", JSON.stringify(modbusDevices));
+  if (modbusWindow) {
+    modbusWindow.webContents.send("modbusDevice", JSON.stringify(modbusDevices));
     BrowserWindow.fromWebContents(_event.sender)?.close();
   }
 });
@@ -133,8 +144,8 @@ ipcMain.on("updateModbusDevice", async (_event, data) => {
 ipcMain.on("updateModbusTarget", async (_event, data) => {
   await updateModbusTarget(data);
   await getModbus();
-  if (mainWindow) {
-    mainWindow.webContents.send("modbusDevice", JSON.stringify(modbusDevices));
+  if (modbusWindow) {
+    modbusWindow.webContents.send("modbusDevice", JSON.stringify(modbusDevices));
     BrowserWindow.fromWebContents(_event.sender)?.close();
   }
 });
@@ -154,15 +165,15 @@ ipcMain.on("getUpdateBacnet", (_event, data) => {
 
 // BACnet Device render로 전송
 export const sendBacnetData = (bacnetDevices: IBacnetDevice[]) => {
-  if (mainWindow) {
-    mainWindow.webContents.send("bacnetDevices", JSON.stringify(bacnetDevices));
+  if (bacnetWindow) {
+    bacnetWindow.webContents.send("bacnetDevices", JSON.stringify(bacnetDevices));
   }
 };
 
 // BACnet Object의 변경된 value를 renderer로 전송
 export const updateBacnet = (sender: IBacnetSender, object: IBacnetIdentifier, updateData: any) => {
-  if (mainWindow) {
-    mainWindow.webContents.send("updateBacnet", { sender, object, updateData });
+  if (bacnetWindow) {
+    bacnetWindow.webContents.send("updateBacnet", { sender, object, updateData });
   }
 };
 
@@ -224,7 +235,9 @@ const createModbusData = async () => {
 // 모드버스의 연결된 소켓을 끊고 sqlite에서 데이터를 다시받은뒤
 // 소켓을 다시연결하는 함수
 const getModbus = async () => {
-  await closeSocket(modbusDevices);
+  if (modbusDevices) {
+    await closeSocket(modbusDevices);
+  }
   await getModbusDevice().then(data => {
     modbusDevices = data;
   });
@@ -263,50 +276,12 @@ const installExtensions = async () => {
 /**
  * createWindow Start
  */
-export const createModbusEditView = async () => {
-  const modbusEditWindow = new BrowserWindow({
+
+export const createWindow = () => {
+  const mainWindow = new BrowserWindow({
     show: false,
     width: 1024,
     height: 728,
-    webPreferences: {
-      preload: app.isPackaged ? path.join(__dirname, "preload.js") : path.join(__dirname, "../../.erb/dll/preload.js")
-    }
-  });
-
-  // modbusEditWindow.loadURL(`file://${path.join(__dirname, "../renderer/modbusEdit.html")}`);
-  modbusEditWindow.loadURL(resolveHtmlPath("modbusEdit.html"));
-
-  modbusEditWindow.on("ready-to-show", async () => {
-    console.log("ready-to-show modbusEditWindow");
-
-    if (!modbusEditWindow) {
-      throw new Error('"mainWindow" is not defined');
-    }
-    if (process.env.START_MINIMIZED) {
-      modbusEditWindow.minimize();
-    } else {
-      modbusEditWindow.show();
-    }
-  });
-  return modbusEditWindow;
-};
-
-const createWindow = async () => {
-  if (isDebug) {
-    await installExtensions();
-  }
-
-  const RESOURCES_PATH = app.isPackaged ? path.join(process.resourcesPath, "assets") : path.join(__dirname, "../../assets");
-
-  const getAssetPath = (...paths: string[]): string => {
-    return path.join(RESOURCES_PATH, ...paths);
-  };
-
-  mainWindow = new BrowserWindow({
-    show: false,
-    width: 1024,
-    height: 728,
-    icon: getAssetPath("icon.png"),
     webPreferences: {
       preload: app.isPackaged ? path.join(__dirname, "preload.js") : path.join(__dirname, "../../.erb/dll/preload.js")
     }
@@ -326,17 +301,135 @@ const createWindow = async () => {
       mainWindow.show();
     }
   });
-
-  mainWindow.on("closed", () => {
-    unsubscribeCOVAll();
-    mainWindow = null;
+  return mainWindow;
+};
+export const createModbusEditView = async () => {
+  const modbusEditWindow = new BrowserWindow({
+    show: false,
+    width: 1024,
+    height: 728,
+    webPreferences: {
+      preload: app.isPackaged ? path.join(__dirname, "preload.js") : path.join(__dirname, "../../.erb/dll/preload.js")
+    }
   });
 
-  const menuBuilder = new MenuBuilder(mainWindow);
+  modbusEditWindow.loadURL(resolveHtmlPath("modbusEdit.html"));
+
+  modbusEditWindow.on("ready-to-show", async () => {
+    console.log("ready-to-show modbusEditWindow");
+
+    if (!modbusEditWindow) {
+      throw new Error('"modbusEditWindow" is not defined');
+    }
+    if (process.env.START_MINIMIZED) {
+      modbusEditWindow.minimize();
+    } else {
+      modbusEditWindow.show();
+    }
+  });
+  return modbusEditWindow;
+};
+
+const createModbusWindow = async () => {
+  if (isDebug) {
+    await installExtensions();
+  }
+
+  const RESOURCES_PATH = app.isPackaged ? path.join(process.resourcesPath, "assets") : path.join(__dirname, "../../assets");
+
+  const getAssetPath = (...paths: string[]): string => {
+    return path.join(RESOURCES_PATH, ...paths);
+  };
+
+  modbusWindow = new BrowserWindow({
+    show: false,
+    width: 1024,
+    height: 728,
+    icon: getAssetPath("icon.png"),
+    webPreferences: {
+      preload: app.isPackaged ? path.join(__dirname, "preload.js") : path.join(__dirname, "../../.erb/dll/preload.js")
+    }
+  });
+
+  modbusWindow.loadURL(resolveHtmlPath("modbusWindow.html"));
+
+  modbusWindow.on("ready-to-show", async () => {
+    console.log("ready-to-show modbusWindow");
+
+    if (!modbusWindow) {
+      throw new Error('"modbusWindow" is not defined');
+    }
+    if (process.env.START_MINIMIZED) {
+      modbusWindow.minimize();
+    } else {
+      modbusWindow.show();
+    }
+  });
+
+  modbusWindow.on("show", () => {
+    setWebContents(modbusWindow?.webContents);
+  });
+
+  modbusWindow.on("closed", () => {
+    setWebContents();
+    modbusWindow = null;
+  });
+
+  const menuBuilder = new MenuBuilder(modbusWindow, "modbus");
   menuBuilder.buildMenu();
 
   // Open urls in the user's browser
-  mainWindow.webContents.setWindowOpenHandler(edata => {
+  modbusWindow.webContents.setWindowOpenHandler(edata => {
+    shell.openExternal(edata.url);
+    return { action: "deny" };
+  });
+  new AppUpdater();
+};
+const createBacnetWindow = async () => {
+  if (isDebug) {
+    await installExtensions();
+  }
+
+  const RESOURCES_PATH = app.isPackaged ? path.join(process.resourcesPath, "assets") : path.join(__dirname, "../../assets");
+
+  const getAssetPath = (...paths: string[]): string => {
+    return path.join(RESOURCES_PATH, ...paths);
+  };
+
+  bacnetWindow = new BrowserWindow({
+    show: false,
+    width: 1024,
+    height: 728,
+    icon: getAssetPath("icon.png"),
+    webPreferences: {
+      preload: app.isPackaged ? path.join(__dirname, "preload.js") : path.join(__dirname, "../../.erb/dll/preload.js")
+    }
+  });
+
+  bacnetWindow.loadURL(resolveHtmlPath("bacnetWindow.html"));
+
+  bacnetWindow.on("ready-to-show", async () => {
+    console.log("ready-to-show bacnetWindow");
+
+    if (!bacnetWindow) {
+      throw new Error('"bacnetWindow" is not defined');
+    }
+    if (process.env.START_MINIMIZED) {
+      bacnetWindow.minimize();
+    } else {
+      bacnetWindow.show();
+    }
+  });
+
+  bacnetWindow.on("closed", () => {
+    bacnetWindow = null;
+  });
+
+  const menuBuilder = new MenuBuilder(bacnetWindow, "bacnet");
+  menuBuilder.buildMenu();
+
+  // Open urls in the user's browser
+  bacnetWindow.webContents.setWindowOpenHandler(edata => {
     shell.openExternal(edata.url);
     return { action: "deny" };
   });
@@ -354,6 +447,7 @@ app.on("window-all-closed", () => {
   // Respect the OSX convention of having the application in memory even
   // after all windows have been closed
   closeSocket(modbusDevices);
+  unsubscribeCOVAll();
   if (process.platform !== "darwin") {
     app.quit();
   }
@@ -364,9 +458,14 @@ app
   .then(async () => {
     // 모드버스 데이터 초기값셋팅 임시처리 sqlite 데이터가 없는경우 활성화
     // await createModbusData();
+    await getModbus();
+    readData(modbusDevices);
     createWindow();
+    // createModbusWindow();
+    // createBacnetWindow();
     app.on("activate", () => {
-      if (mainWindow === null) createWindow();
+      if (modbusWindow === null) createModbusWindow();
+      if (bacnetWindow === null) createBacnetWindow();
     });
   })
   .catch(console.log);

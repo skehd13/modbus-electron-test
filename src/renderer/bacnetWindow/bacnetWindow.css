@@ -74,11 +74,9 @@ section {
 
 td {
   border: 1px solid;
-}
-
-.borderBox {
-  border: 1px solid #777;
-  padding: 30px 40px;
-  align-items: center;
-  text-align: center;
+  text-overflow: ellipsis;
+  word-break: break-all;
+  overflow: hidden;
+  white-space: nowrap;
+  max-width: 100px;
 }

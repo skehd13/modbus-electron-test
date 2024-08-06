@@ -3,6 +3,7 @@ import { find } from "lodash";
 import net from "net";
 
 let intervals: NodeJS.Timeout[] = [];
+let webContents: Electron.WebContents | undefined;
 
 /**
  * 받아온 디바이스 값을 이용하여 modbus-TCP 연결
@@ -28,6 +29,10 @@ export const createModbus = (device: IModbusDeviceGroup) => {
   return device;
 };
 
+export const setWebContents = (newWebContents?: Electron.WebContents) => {
+  webContents = newWebContents;
+};
+
 /**
  * 각 디바이스의 값을 받아와서 주기적으로 업데이트하는 함수
  * 업데이트 함수는 intervals로 등록됨
@@ -35,7 +40,7 @@ export const createModbus = (device: IModbusDeviceGroup) => {
  * @param webContents Electron.WebContents
  * @returns
  */
-export const readData = async (devices: IModbusDeviceGroup[], webContents: Electron.WebContents) => {
+export const readData = async (devices: IModbusDeviceGroup[]) => {
   if (intervals.length > 0) {
     await clearAllInterval();
   }
@@ -68,13 +73,31 @@ export const readData = async (devices: IModbusDeviceGroup[], webContents: Elect
               values.map((value: any, index) => {
                 const target = find(device.targets, { position: device.start + index });
                 if (target) {
-                  target.value = value;
-                  webContents.send("updateModbusValue", {
-                    ipAddress: device.ipAddress,
-                    port: device.port,
-                    address: target.position,
-                    value
-                  });
+                  let newValue = value;
+                  if (target.parsing) {
+                    if (target.parsing.match(/^\//)) {
+                      const parse = parseInt(target.parsing.replaceAll(/^\//g, ""));
+                      newValue = value / parse;
+                    } else if (target.parsing.match(/^\*/)) {
+                      const parse = parseInt(target.parsing.replaceAll(/^\*/g, ""));
+                      newValue = value * parse;
+                    } else if (target.parsing.match(/^\+/)) {
+                      const parse = parseInt(target.parsing.replaceAll(/^\+/g, ""));
+                      newValue = value + parse;
+                    } else if (target.parsing.match(/^\-/)) {
+                      const parse = parseInt(target.parsing.replaceAll(/^\-/g, ""));
+                      newValue = value - parse;
+                    }
+                  }
+                  target.value = newValue;
+                  if (webContents) {
+                    webContents.send("updateModbusValue", {
+                      ipAddress: device.ipAddress,
+                      port: device.port,
+                      address: target.position,
+                      value: newValue
+                    });
+                  }
                 } else {
                   console.log(device.name, "unkown", value);
                 }

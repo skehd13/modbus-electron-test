@@ -15,6 +15,7 @@ const Hello = () => {
   const [delay, setDelay] = useState<number>();
   const [targetName, setTargetName] = useState<string>("");
   const [position, setPosition] = useState<number>();
+  const [parsing, setParsing] = useState<string>("");
   // const [device_id, setDevice_id] = useState<number>();
   const [viewType, setViewType] = useState<"device" | "target">("device");
 
@@ -34,6 +35,7 @@ const Hello = () => {
       } else if (data.viewType === "target") {
         setId(data.id);
         setName(data.name);
+        setParsing(data.parsing);
         setPosition(data.position);
         // setDevice_id(data.device_id);
       }
@@ -87,6 +89,9 @@ const Hello = () => {
       name,
       position
     };
+    if (parsing !== "") {
+      target.parsing = parsing;
+    }
     window.electron.ipcRenderer.sendMessage("updateModbusTarget", target);
   };
   return (
@@ -142,6 +147,10 @@ const Hello = () => {
           <div>
             <div>name</div>
             <input value={name} onChange={e => setName(e.target.value)}></input>
+          </div>
+          <div>
+            <div>parsing</div>
+            <input value={parsing} onChange={e => setParsing(e.target.value)}></input>
           </div>
           <div>
             <div>position</div>

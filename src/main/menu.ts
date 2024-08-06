@@ -9,9 +9,11 @@ interface DarwinMenuItemConstructorOptions extends MenuItemConstructorOptions {
 
 export default class MenuBuilder {
   mainWindow: BrowserWindow;
+  type: "bacnet" | "modbus" | undefined;
 
-  constructor(mainWindow: BrowserWindow) {
+  constructor(mainWindow: BrowserWindow, type?: "bacnet" | "modbus") {
     this.mainWindow = mainWindow;
+    this.type = type;
   }
 
   buildMenu(): Menu {
@@ -175,35 +177,39 @@ export default class MenuBuilder {
     return [subMenuAbout, subMenuEdit, subMenuView, subMenuWindow, subMenuHelp];
   }
 
-  buildDefaultTemplate() {
-    const templateDefault = [
+  buildDefaultTemplate(): MenuItemConstructorOptions[] {
+    const templateFileSub: MenuItemConstructorOptions[] = [
+      {
+        label: "&Open",
+        accelerator: "Ctrl+O"
+      },
+      {
+        label: "&Close",
+        accelerator: "Ctrl+W",
+        click: () => {
+          this.mainWindow.close();
+        }
+      }
+    ];
+    if (this.type === "modbus") {
+      templateFileSub.push({
+        label: "&Open ModbusEdit",
+        click: () => {
+          createModbusEditView();
+        }
+      });
+    } else if (this.type === "bacnet") {
+      templateFileSub.push({
+        label: "&Bacnet Scan",
+        click: () => {
+          getDevices();
+        }
+      });
+    }
+    const templateDefault: MenuItemConstructorOptions[] = [
       {
         label: "&File",
-        submenu: [
-          {
-            label: "&Open",
-            accelerator: "Ctrl+O"
-          },
-          {
-            label: "&Close",
-            accelerator: "Ctrl+W",
-            click: () => {
-              this.mainWindow.close();
-            }
-          },
-          {
-            label: "&Open ModbusEdit",
-            click: () => {
-              createModbusEditView();
-            }
-          },
-          {
-            label: "&Bacnet Scan",
-            click: () => {
-              getDevices();
-            }
-          }
-        ]
+        submenu: templateFileSub
       },
       {
         label: "&View",

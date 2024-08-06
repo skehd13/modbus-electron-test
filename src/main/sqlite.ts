@@ -195,7 +195,7 @@ export const updateModbusDevice = async (device: IModbusDeviceGroup) => {
  */
 export const updateModbusTarget = async (target: ITarget) => {
   await new Promise(res => {
-    sqlite.run("UPDATE modbusTarget SET name = ?, position = ? WHERE id = ?", [target.name, target.position, target.id], () => {
+    sqlite.run("UPDATE modbusTarget SET name = ?, parsing = ? WHERE id = ?", [target.name, target.parsing, target.id], () => {
       res(true);
     });
   });

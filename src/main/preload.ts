@@ -11,7 +11,7 @@ type MODBUS_CHANNELS =
   | "updateModbusDevice"
   | "updateModbusTarget";
 type BACNET_CHANNEL = "getBacnetDevices" | "getUpdateBacnet" | "updateBacnet" | "bacnetDevices";
-export type Channels = MODBUS_CHANNELS | BACNET_CHANNEL | "ipc-example" | "show-context-menu";
+export type Channels = MODBUS_CHANNELS | BACNET_CHANNEL | "ipc-example" | "show-context-menu" | "openBrowser";
 
 contextBridge.exposeInMainWorld("electron", {
   ipcRenderer: {

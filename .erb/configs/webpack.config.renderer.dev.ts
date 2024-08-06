@@ -47,6 +47,16 @@ const configuration: webpack.Configuration = {
       `webpack-dev-server/client?http://localhost:${port}/dist`,
       "webpack/hot/only-dev-server",
       path.join(webpackPaths.srcRendererPath, "/modbusEdit/modbusEdit.tsx")
+    ],
+    modbusWindow: [
+      `webpack-dev-server/client?http://localhost:${port}/dist`,
+      "webpack/hot/only-dev-server",
+      path.join(webpackPaths.srcRendererPath, "/modbusWindow/modbusWindow.tsx")
+    ],
+    bacnetWindow: [
+      `webpack-dev-server/client?http://localhost:${port}/dist`,
+      "webpack/hot/only-dev-server",
+      path.join(webpackPaths.srcRendererPath, "/bacnetWindow/bacnetWindow.tsx")
     ]
   },
 
@@ -154,6 +164,36 @@ const configuration: webpack.Configuration = {
       },
       isBrowser: false,
       chunks: ["modbusEdit"],
+      env: process.env.NODE_ENV,
+      isDevelopment: process.env.NODE_ENV !== "production",
+      nodeModules: webpackPaths.appNodeModulesPath
+    }),
+
+    new HtmlWebpackPlugin({
+      filename: path.join("modbusWindow.html"),
+      template: path.join(webpackPaths.srcRendererPath, "/modbusWindow/modbusWindow.ejs"),
+      minify: {
+        collapseWhitespace: true,
+        removeAttributeQuotes: true,
+        removeComments: true
+      },
+      isBrowser: false,
+      chunks: ["modbusWindow"],
+      env: process.env.NODE_ENV,
+      isDevelopment: process.env.NODE_ENV !== "production",
+      nodeModules: webpackPaths.appNodeModulesPath
+    }),
+
+    new HtmlWebpackPlugin({
+      filename: path.join("bacnetWindow.html"),
+      template: path.join(webpackPaths.srcRendererPath, "/bacnetWindow/bacnetWindow.ejs"),
+      minify: {
+        collapseWhitespace: true,
+        removeAttributeQuotes: true,
+        removeComments: true
+      },
+      isBrowser: false,
+      chunks: ["bacnetWindow"],
       env: process.env.NODE_ENV,
       isDevelopment: process.env.NODE_ENV !== "production",
       nodeModules: webpackPaths.appNodeModulesPath

@@ -29,7 +29,9 @@ export const subscribeCOV = (sender: IBacnetSender, object: IBacnetIdentifier) =
   subscribeCOVId = subscribeCOVId + 1;
   subscribeCOVObjects.push({ ...newObject, subscribeCOVId });
   bacnetClient.subscribeCov(sender, object, subscribeCOVId, false, false, 0, {}, err => {
-    console.log("subscribeCOV" + err);
+    if (err) {
+      console.log("subscribeCOV Err " + err);
+    }
   });
 };
 
@@ -42,7 +44,9 @@ export const subscribeCOV = (sender: IBacnetSender, object: IBacnetIdentifier) =
 export const unsubscribeCOV = (sender: IBacnetSender, object: IBacnetIdentifier, subscribeCOVId?: number) => {
   if (subscribeCOVId !== undefined) {
     bacnetClient.subscribeCov(sender, object, subscribeCOVId, false, false, 1, {}, err => {
-      console.log("unsubscribeCOV" + err);
+      if (err) {
+        console.log("unsubscribeCOV Err " + err);
+      }
     });
   } else {
     const findSubIndex = subscribeCOVObjects.findIndex(
@@ -87,9 +91,6 @@ bacnetClient.on("error", err => {
  * updateBacnet함수를 통해 renderer프로세스로 해당 값을 전송
  */
 bacnetClient.on("covNotifyUnconfirmed", data => {
-  if (data.payload.monitoredObjectId.type === enums.ObjectType.DATETIME_VALUE) {
-    console.log(JSON.stringify(data.payload));
-  }
   const value = subscribeObjectParser(data.payload);
   updateBacnet(data.header.sender, data.payload.monitoredObjectId, value);
 });
